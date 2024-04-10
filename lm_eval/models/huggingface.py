@@ -537,13 +537,47 @@ class HFLM(TemplateLM):
                         model_kwargs["bnb_4bit_compute_dtype"] = get_dtype(
                             model_kwargs["bnb_4bit_compute_dtype"]
                         )
-            self._model = self.AUTO_MODEL_CLASS.from_pretrained(
-                pretrained,
-                revision=revision,
-                torch_dtype=get_dtype(dtype),
-                trust_remote_code=trust_remote_code,
-                **model_kwargs,
-            )
+            if 'attention_method' in model_kwargs:
+                import warnings
+                from timber.models.modeling_llama import LlamaForCausalLM, LlamaCustomAttention
+                
+                attention_method = 'none'
+                hip_k = 512
+                hip_dense_layers = 3
+                
+                if 'attention_method' in model_kwargs:
+                    attention_method = model_kwargs['attention_method']
+                    del model_kwargs['attention_method']
+                if 'hip_k' in model_kwargs:
+                    hip_k = int(model_kwargs['hip_k'])
+                    del model_kwargs['hip_k']
+                
+                self._model = LlamaForCausalLM.from_pretrained(
+                    pretrained,
+                    revision=revision,
+                    torch_dtype=get_dtype(dtype),
+                    trust_remote_code=trust_remote_code,
+                    attn_implementation='sdpa',
+                    **model_kwargs,
+                )
+                
+                for m in self._model.modules():
+                    if isinstance(m, LlamaCustomAttention):
+                        m.tree_dense_layers = list(range(hip_dense_layers))
+                        m.tree_k = hip_k
+                        m.tree_block_size_q = 32
+                        m.tree_block_size_k = 2
+                        m.attention_method = attention_method
+                
+                warnings.warn(f'{attention_method}, {hip_k}, {hip_dense_layers}')
+            else:
+                self._model = self.AUTO_MODEL_CLASS.from_pretrained(
+                    pretrained,
+                    revision=revision,
+                    torch_dtype=get_dtype(dtype),
+                    trust_remote_code=trust_remote_code,
+                    **model_kwargs,
+                )
         else:
             try:
                 from auto_gptq import AutoGPTQForCausalLM
