@@ -539,7 +539,7 @@ class HFLM(TemplateLM):
                         )
             if 'attention_method' in model_kwargs:
                 import warnings
-                from timber.models.modeling_llama import LlamaForCausalLM, LlamaCustomAttention
+                from hip.models.modeling_llama import LlamaForCausalLM, LlamaCustomAttention
                 
                 attention_method = 'none'
                 hip_k = 512
